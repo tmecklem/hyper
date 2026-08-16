@@ -77,14 +77,6 @@ service Hyper {
   //   NOT_FOUND -- no VM with this `vm_id` is running in the cluster.
   rpc GetHostAddress(GetHostAddressRequest) returns (GetHostAddressResponse);
 
-  // Report the endpoint that speaks to a VM's Docker daemon. Today a host-local
-  // Unix socket path relayed over vsock to the guest daemon; a later revision
-  // returns a network (`tcp://`) endpoint so a remote control plane can drive it.
-  //
-  // Errors:
-  //   NOT_FOUND -- no VM with this `vm_id` is running in the cluster.
-  rpc GetDockerEndpoint(GetDockerEndpointRequest) returns (GetDockerEndpointResponse);
-
   // Run a command inside a VM and return its captured output.
   //
   // `argv` is executed directly (no shell) as PID 1 in the guest, so `argv[0]`
@@ -168,6 +160,15 @@ message CreateVmResponse {
 
   // The cluster node (Erlang node name) the guest booted on.
   string node = 2;
+
+  // The VM's Docker endpoint (`tcp://host:port`) as served by the per-VM
+  // authenticating proxy, or empty when the node runs no proxy (only the
+  // host-local socket exists). Drive the daemon here, not over gRPC.
+  string docker_endpoint = 3;
+
+  // Bearer token to present (`Authorization: Bearer <token>`) when driving the
+  // daemon at `docker_endpoint`. Empty when no proxy is configured.
+  string docker_token = 4;
 }
 
 // Request to fork a running VM.
@@ -183,6 +184,11 @@ message ForkVmResponse {
 
   // The cluster node (Erlang node name) the child booted on.
   string node = 2;
+
+  // The child's Docker endpoint (`tcp://host:port`) and bearer token, same
+  // shape and semantics as on CreateVmResponse. Empty when no proxy is configured.
+  string docker_endpoint = 3;
+  string docker_token = 4;
 }
 
 // Request to stop a VM.
@@ -207,6 +213,12 @@ message GetVmResponse {
 
   // The cluster node (Erlang node name) the VM currently runs on.
   string node = 2;
+
+  // The VM's Docker endpoint (`tcp://host:port`) and bearer token, same shape as
+  // on CreateVmResponse. Lets a client that holds only a vm_id re-resolve the
+  // coordinates it needs to drive the daemon; empty when no proxy is configured.
+  string docker_endpoint = 3;
+  string docker_token = 4;
 }
 
 // Request a VM's metered compute.
@@ -279,19 +291,6 @@ message GetHostAddressRequest {
 message GetHostAddressResponse {
   // The dotted-quad IP a guest-local service dials to reach the host.
   string address = 1;
-}
-
-// Request the endpoint for a VM's Docker daemon.
-message GetDockerEndpointRequest {
-  // The id of the VM whose Docker endpoint to report.
-  string vm_id = 1;
-}
-
-// Result of a successful GetDockerEndpoint.
-message GetDockerEndpointResponse {
-  // The endpoint that speaks to the VM's Docker daemon. A Unix socket path
-  // today; a `tcp://host:port` URL once the daemon is exposed on the network.
-  string endpoint = 1;
 }
 
 // Request to run a command inside a VM.

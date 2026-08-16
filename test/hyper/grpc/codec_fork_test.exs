@@ -4,9 +4,14 @@ defmodule Hyper.Grpc.CodecForkTest do
   alias Hyper.Grpc.Codec
   alias Hyper.Grpc.V1.ForkVmResponse
 
-  test "a forked result maps to a ForkVmResponse with the child id and node string" do
-    assert %ForkVmResponse{vm_id: "child-abc", node: "hyper@host"} =
-             Codec.to_grpc({:forked, "child-abc", :hyper@host})
+  test "a forked result maps to a ForkVmResponse with the child id, node, and Docker coords" do
+    assert %ForkVmResponse{
+             vm_id: "child-abc",
+             node: "hyper@host",
+             docker_endpoint: "",
+             docker_token: ""
+           } =
+             Codec.to_grpc({:forked, "child-abc", :hyper@host, %{endpoint: "", token: ""}})
   end
 
   test "node_unreachable maps to an UNAVAILABLE gRPC error" do

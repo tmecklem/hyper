@@ -19,14 +19,16 @@ defmodule Hyper.E2e.GrpcContractTest do
   use ExUnit.Case, async: false
 
   alias Hyper.Grpc.V1.{
+    CreateVmRequest,
+    CreateVmResponse,
     ExecRequest,
     ExecResponse,
     ForkVmRequest,
     ForkVmResponse,
-    GetDockerEndpointRequest,
-    GetDockerEndpointResponse,
     GetHostAddressRequest,
     GetHostAddressResponse,
+    GetVmRequest,
+    GetVmResponse,
     StopVmRequest
   }
 
@@ -100,15 +102,44 @@ defmodule Hyper.E2e.GrpcContractTest do
 
     assert host_addr =~ ~r/^\d{1,3}(\.\d{1,3}){3}$/
 
-    assert {:ok, %GetDockerEndpointResponse{endpoint: endpoint}} =
-             Stub.get_docker_endpoint(channel, %GetDockerEndpointRequest{vm_id: vm_id})
-
-    assert endpoint != ""
-
     assert {:ok, %ExecResponse{stdout: stdout, exit_code: 0}} =
              Stub.exec(channel, %ExecRequest{vm_id: vm_id, argv: ["/bin/echo", "hi"]})
 
     assert stdout == "hi\n"
+  end
+
+  test "CreateVm returns a proxy Docker endpoint whose token gate is live", %{channel: channel} do
+    # Enable the per-VM Docker proxy on loopback for this VM's boot. Set before
+    # create so fire_vmm picks up the bind; the alpine image has no in-guest
+    # dockerd, so we assert the endpoint + the live token gate (a 401 rejection
+    # never dials the upstream), not a full Docker round-trip.
+    Application.put_env(:hyper, Hyper.Cfg.Network, docker_proxy_bind: "127.0.0.1")
+    on_exit(fn -> Application.delete_env(:hyper, Hyper.Cfg.Network) end)
+
+    assert {:ok, img_id} = Hyper.Img.OciLoader.load(@image)
+
+    assert {:ok, %CreateVmResponse{vm_id: vm_id, docker_endpoint: endpoint, docker_token: token}} =
+             Stub.create_vm(channel, %CreateVmRequest{
+               img_id: img_id,
+               instance_type: :INSTANCE_TYPE_MICRO,
+               arch: :ARCHITECTURE_X86_64
+             })
+
+    on_exit(fn -> Stub.stop_vm(channel, %StopVmRequest{vm_id: vm_id}) end)
+
+    assert endpoint =~ ~r{^tcp://127\.0\.0\.1:\d+$}
+    assert byte_size(token) >= 32
+
+    # GetVm re-resolves the same coordinates from just the vm_id — a client that
+    # lost the create response is not locked out for the VM's lifetime.
+    assert {:ok, %GetVmResponse{docker_endpoint: ^endpoint, docker_token: ^token}} =
+             Stub.get_vm(channel, %GetVmRequest{vm_id: vm_id})
+
+    "tcp://127.0.0.1:" <> port = endpoint
+    {:ok, c} = :gen_tcp.connect({127, 0, 0, 1}, String.to_integer(port), [:binary, active: false])
+    :ok = :gen_tcp.send(c, "GET /_ping HTTP/1.1\r\nhost: d\r\n\r\n")
+    assert {:ok, resp} = :gen_tcp.recv(c, 0, 5_000)
+    assert resp =~ "401"
   end
 
   defp ensure_node_deps! do

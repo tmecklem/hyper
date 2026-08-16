@@ -47,6 +47,35 @@ defmodule Hyper.Node.FireVMM.Agent.DockerProxy do
   def port(server), do: GenServer.call(server, :port)
 
   @doc """
+  Mint a fresh per-VM bearer token: 32 bytes of CSPRNG entropy, URL-safe so it
+  drops straight into an `Authorization: Bearer` header.
+  """
+  @spec mint_token() :: String.t()
+  def mint_token, do: :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
+
+  @doc """
+  Resolve a VM's proxy port from its `uid` and the node's config — the single
+  source both the supervisor (which binds the port) and `Hyper.docker_endpoint/1`
+  (which advertises it) call, so the bound and advertised ports cannot drift.
+  """
+  @spec port_for(non_neg_integer()) :: non_neg_integer()
+  def port_for(uid) do
+    {floor, _ceiling} = Hyper.Cfg.Jails.uid_gid_range()
+    port_for(uid, floor, Hyper.Cfg.Network.docker_proxy_base_port())
+  end
+
+  @doc """
+  The deterministic listen port for a VM: `base` plus the VM's slot above the
+  uid `floor`. Deterministic so a caller can compute a VM's Docker endpoint from
+  its uid alone (via `State.describe/1`), never needing to find the proxy process.
+  """
+  # Dialyzer widens integer `+`/`-` to number() (folding in float()) even though
+  # every operand here is an integer, so it flags the (correct) integer spec.
+  @dialyzer {:nowarn_function, port_for: 3}
+  @spec port_for(non_neg_integer(), non_neg_integer(), non_neg_integer()) :: non_neg_integer()
+  def port_for(uid, floor, base), do: base + (uid - floor)
+
+  @doc """
   Whether an inbound HTTP request `head` carries `Authorization: Bearer <token>`
   for `token`.
 

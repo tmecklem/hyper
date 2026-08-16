@@ -65,13 +65,6 @@ test("GetHostAddress on an unknown vm_id is NOT_FOUND", async () => {
   );
 });
 
-test("GetDockerEndpoint on an unknown vm_id is NOT_FOUND", async () => {
-  await expectStatus(
-    call(client, client.getDockerEndpoint, { vmId: GHOST_VM }),
-    status.NOT_FOUND,
-  );
-});
-
 test("Exec on an unknown vm_id is NOT_FOUND", async () => {
   await expectStatus(
     call(client, client.exec, { vmId: GHOST_VM, argv: ["/bin/true"] }),

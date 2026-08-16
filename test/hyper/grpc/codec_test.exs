@@ -6,7 +6,7 @@ defmodule Hyper.Grpc.CodecTest do
   alias Hyper.Grpc.V1.CreateVmResponse
   alias Hyper.Grpc.V1.ExecRequest
   alias Hyper.Grpc.V1.ExecResponse
-  alias Hyper.Grpc.V1.GetDockerEndpointResponse
+  alias Hyper.Grpc.V1.ForkVmResponse
   alias Hyper.Grpc.V1.GetHostAddressResponse
   alias Hyper.Grpc.V1.GetVmResponse
   alias Hyper.Grpc.V1.GetVmUsageResponse
@@ -154,14 +154,43 @@ defmodule Hyper.Grpc.CodecTest do
   # `to_grpc/1` -- the encode boundary. The contract: each domain result maps to
   # the response message carrying exactly the fields a client reads.
   describe "to_grpc/1 response encoding" do
-    test "a created result carries the vm_id and node string" do
-      assert %CreateVmResponse{vm_id: "vabc", node: "hyper@host"} =
-               Codec.to_grpc({:created, "vabc", :hyper@host})
+    test "a created result carries the vm_id, node, and Docker coordinates" do
+      assert %CreateVmResponse{
+               vm_id: "vabc",
+               node: "hyper@host",
+               docker_endpoint: "tcp://100.64.0.2:12375",
+               docker_token: "tok"
+             } =
+               Codec.to_grpc(
+                 {:created, "vabc", :hyper@host,
+                  %{endpoint: "tcp://100.64.0.2:12375", token: "tok"}}
+               )
     end
 
-    test "a located result carries the vm_id and node string" do
-      assert %GetVmResponse{vm_id: "vabc", node: "hyper@host"} =
-               Codec.to_grpc({:located, "vabc", :hyper@host})
+    test "a forked result carries the child's vm_id, node, and Docker coordinates" do
+      assert %ForkVmResponse{
+               vm_id: "vchild",
+               node: "hyper@host",
+               docker_endpoint: "tcp://100.64.0.2:12380",
+               docker_token: "tok2"
+             } =
+               Codec.to_grpc(
+                 {:forked, "vchild", :hyper@host,
+                  %{endpoint: "tcp://100.64.0.2:12380", token: "tok2"}}
+               )
+    end
+
+    test "a located result carries the vm_id, node, and Docker coordinates" do
+      assert %GetVmResponse{
+               vm_id: "vabc",
+               node: "hyper@host",
+               docker_endpoint: "tcp://100.64.0.2:12375",
+               docker_token: "tok"
+             } =
+               Codec.to_grpc(
+                 {:located, "vabc", :hyper@host,
+                  %{endpoint: "tcp://100.64.0.2:12375", token: "tok"}}
+               )
     end
 
     test "a loaded result carries the image id" do
@@ -175,11 +204,6 @@ defmodule Hyper.Grpc.CodecTest do
     test "a host_address result carries the host-facing address" do
       assert %GetHostAddressResponse{address: "10.100.0.1"} =
                Codec.to_grpc({:host_address, "10.100.0.1"})
-    end
-
-    test "a docker_endpoint result carries the endpoint verbatim" do
-      assert %GetDockerEndpointResponse{endpoint: "/run/hyper/docker-vabc.sock"} =
-               Codec.to_grpc({:docker_endpoint, "/run/hyper/docker-vabc.sock"})
     end
 
     test "an exec result carries stdout, stderr, and the exit code" do

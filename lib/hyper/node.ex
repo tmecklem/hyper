@@ -270,8 +270,48 @@ defmodule Hyper.Node do
       img_id: spec.img_id,
       mutable: mutable,
       kernel: kernel,
-      boot_args: spec.boot_args
+      boot_args: spec.boot_args,
+      docker_token: FireVMM.Agent.DockerProxy.mint_token()
     }
+  end
+
+  @doc """
+  Resolve the Docker endpoint + token for a VM running on **this** node, reading
+  the bind config, the VM's `Opts` (uid, token), and the port band locally. The
+  cluster-facing `Hyper.docker_endpoint/1` calls this with a single `:erpc` hop
+  rather than fetching each piece across the wire.
+
+  `{:error, :not_configured}` when the node runs no Docker proxy; `{:error,
+  :not_found}` when the VM is not running here.
+  """
+  @spec docker_endpoint(Hyper.Vm.Id.t()) ::
+          {:ok, %{endpoint: String.t(), token: String.t()}}
+          | {:error, :not_found | :not_configured}
+  def docker_endpoint(vm_id) do
+    case Hyper.Cfg.Network.docker_proxy_bind() do
+      nil ->
+        {:error, :not_configured}
+
+      bind ->
+        case running_opts(vm_id) do
+          {:ok, opts} ->
+            port = FireVMM.Agent.DockerProxy.port_for(opts.uid)
+            {:ok, %{endpoint: "tcp://#{bind}:#{port}", token: opts.docker_token}}
+
+          :error ->
+            {:error, :not_found}
+        end
+    end
+  end
+
+  # State.describe/1 exits `:noproc` when the VM is not registered here — the one
+  # exit that means "not running". Translate only that into :not_found; a call
+  # timeout or a genuine crash propagates rather than masquerading as a missing VM.
+  @spec running_opts(Hyper.Vm.Id.t()) :: {:ok, FireVMM.Opts.t()} | :error
+  defp running_opts(vm_id) do
+    {:ok, FireVMM.State.describe(vm_id)}
+  catch
+    :exit, {:noproc, _} -> :error
   end
 
   @doc "Start a microVM on this node."

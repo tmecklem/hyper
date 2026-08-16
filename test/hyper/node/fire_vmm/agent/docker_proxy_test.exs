@@ -37,6 +37,15 @@ defmodule Hyper.Node.FireVMM.Agent.DockerProxyTest do
     end
   end
 
+  describe "port_for/3" do
+    test "maps a VM's uid to the base port plus its slot above the floor" do
+      # Deterministic so the endpoint can be computed from State.describe/1's uid
+      # without a runtime lookup of the proxy process.
+      assert DockerProxy.port_for(900_000, 900_000, 12_375) == 12_375
+      assert DockerProxy.port_for(900_005, 900_000, 12_375) == 12_380
+    end
+  end
+
   describe "unauthorized_response/0" do
     test "is a well-formed HTTP 401 with no body" do
       resp = DockerProxy.unauthorized_response()

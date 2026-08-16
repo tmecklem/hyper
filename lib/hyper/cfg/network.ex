@@ -14,6 +14,7 @@ defmodule Hyper.Cfg.Network do
 
   @default_clone_pool "172.31.0.0/16"
   @default_resolver "1.1.1.1"
+  @default_docker_proxy_base_port 12_375
 
   @doc """
   Whether the required `[network] uplink` is present. Used only by the startup
@@ -53,6 +54,32 @@ defmodule Hyper.Cfg.Network do
   """
   @spec host_ports() :: [non_neg_integer()]
   def host_ports, do: get_cfg(toml: "network.host_ports", default: [])
+
+  @doc """
+  Host address the per-VM Docker proxies bind to, as `[network] docker_proxy_bind`.
+
+  Set this to the node's tailnet (WireGuard) address so a remote control plane
+  can reach each VM's Docker daemon; the tailnet + its ACLs are the outer trust
+  boundary, the per-VM bearer token the inner one. `nil` (the default) leaves the
+  proxies off — the daemon is then reachable only via the host-local Unix socket.
+  """
+  @spec docker_proxy_bind() :: String.t() | nil
+  def docker_proxy_bind,
+    do:
+      get_cfg(
+        toml: "network.docker_proxy_bind",
+        runtime: {__MODULE__, :docker_proxy_bind},
+        default: nil
+      )
+
+  @doc """
+  Base TCP port the per-VM Docker proxies are numbered from, as
+  `[network] docker_proxy_base_port`. Each VM listens on `base + its uid slot`,
+  so the ports are disjoint across the VMs a node can run at once.
+  """
+  @spec docker_proxy_base_port() :: :inet.port_number()
+  def docker_proxy_base_port,
+    do: get_cfg(toml: "network.docker_proxy_base_port", default: @default_docker_proxy_base_port)
 
   @doc """
   DNS resolver IP handed to the guest via the `hyper.resolver=` kernel cmdline
