@@ -296,21 +296,8 @@ defmodule Hyper do
           | {:error, :not_found | :not_configured}
   def docker_endpoint(vm_id) when is_binary(vm_id) do
     case whereis(vm_id) do
-      nil ->
-        {:error, :not_found}
-
-      node ->
-        case :erpc.call(node, Hyper.Cfg.Network, :docker_proxy_bind, []) do
-          nil ->
-            {:error, :not_configured}
-
-          bind ->
-            opts = :erpc.call(node, Hyper.Node.FireVMM.State, :describe, [vm_id])
-            {floor, _ceiling} = :erpc.call(node, Hyper.Cfg.Jails, :uid_gid_range, [])
-            base = :erpc.call(node, Hyper.Cfg.Network, :docker_proxy_base_port, [])
-            port = Hyper.Node.FireVMM.Agent.DockerProxy.port_for(opts.uid, floor, base)
-            {:ok, %{endpoint: "tcp://#{bind}:#{port}", token: opts.docker_token}}
-        end
+      nil -> {:error, :not_found}
+      node -> :erpc.call(node, Hyper.Node, :docker_endpoint, [vm_id])
     end
   rescue
     _ -> {:error, :not_found}

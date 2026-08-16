@@ -275,6 +275,34 @@ defmodule Hyper.Node do
     }
   end
 
+  @doc """
+  Resolve the Docker endpoint + token for a VM running on **this** node, reading
+  the bind config, the VM's `Opts` (uid, token), and the port band locally. The
+  cluster-facing `Hyper.docker_endpoint/1` calls this with a single `:erpc` hop
+  rather than fetching each piece across the wire.
+
+  `{:error, :not_configured}` when the node runs no Docker proxy; `{:error,
+  :not_found}` when the VM is not running here.
+  """
+  @spec docker_endpoint(Hyper.Vm.Id.t()) ::
+          {:ok, %{endpoint: String.t(), token: String.t()}}
+          | {:error, :not_found | :not_configured}
+  def docker_endpoint(vm_id) do
+    case Hyper.Cfg.Network.docker_proxy_bind() do
+      nil ->
+        {:error, :not_configured}
+
+      bind ->
+        opts = FireVMM.State.describe(vm_id)
+        {floor, _ceiling} = Hyper.Cfg.Jails.uid_gid_range()
+        base = Hyper.Cfg.Network.docker_proxy_base_port()
+        port = FireVMM.Agent.DockerProxy.port_for(opts.uid, floor, base)
+        {:ok, %{endpoint: "tcp://#{bind}:#{port}", token: opts.docker_token}}
+    end
+  rescue
+    _ -> {:error, :not_found}
+  end
+
   @doc "Start a microVM on this node."
   @spec start_vm(FireVMM.Opts.t()) :: DynamicSupervisor.on_start_child()
   @decorate with_span("Hyper.Node.start_vm", include: [:opts])
