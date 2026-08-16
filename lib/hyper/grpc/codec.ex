@@ -11,7 +11,11 @@ defmodule Hyper.Grpc.Codec do
   alias Hyper.Grpc.V1.{
     CreateVmRequest,
     CreateVmResponse,
+    ExecRequest,
+    ExecResponse,
     ForkVmResponse,
+    GetDockerEndpointResponse,
+    GetHostAddressResponse,
     GetVmResponse,
     GetVmUsageResponse,
     ListVmsResponse,
@@ -72,6 +76,23 @@ defmodule Hyper.Grpc.Codec do
     {:ok, {ref, opts}}
   end
 
+  @spec from_grpc(ExecRequest.t()) ::
+          {:ok, {Hyper.Vm.Id.t(), [String.t()], keyword()}}
+          | {:error, :missing_vm_id | :missing_argv}
+  def from_grpc(%ExecRequest{vm_id: vm_id}) when vm_id in [nil, ""],
+    do: {:error, :missing_vm_id}
+
+  def from_grpc(%ExecRequest{argv: argv}) when argv in [nil, []],
+    do: {:error, :missing_argv}
+
+  def from_grpc(%ExecRequest{vm_id: vm_id, argv: argv} = req) do
+    opts =
+      [env: exec_env(req.env), cwd: blank_to_nil(req.cwd), timeout: positive(req.timeout_ms)]
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+
+    {:ok, {vm_id, argv, opts}}
+  end
+
   @doc "Convert a domain result to an outbound response message, or an error to `GRPC.RPCError`."
   @spec to_grpc({:created, Hyper.Vm.Id.t(), node()}) :: CreateVmResponse.t()
   def to_grpc({:created, vm_id, node}) when is_binary(vm_id),
@@ -97,6 +118,19 @@ defmodule Hyper.Grpc.Codec do
   def to_grpc({:loaded, img_id}) when is_binary(img_id),
     do: %LoadImageResponse{img_id: img_id}
 
+  @spec to_grpc({:host_address, String.t()}) :: GetHostAddressResponse.t()
+  def to_grpc({:host_address, address}) when is_binary(address),
+    do: %GetHostAddressResponse{address: address}
+
+  @spec to_grpc({:docker_endpoint, String.t()}) :: GetDockerEndpointResponse.t()
+  def to_grpc({:docker_endpoint, endpoint}) when is_binary(endpoint),
+    do: %GetDockerEndpointResponse{endpoint: endpoint}
+
+  @spec to_grpc({:exec, %{stdout: binary(), stderr: binary(), exit_code: integer()}}) ::
+          ExecResponse.t()
+  def to_grpc({:exec, %{stdout: stdout, stderr: stderr, exit_code: exit_code}}),
+    do: %ExecResponse{stdout: stdout, stderr: stderr, exit_code: exit_code}
+
   @spec to_grpc(:stopped) :: StopVmResponse.t()
   def to_grpc(:stopped), do: %StopVmResponse{}
 
@@ -105,6 +139,21 @@ defmodule Hyper.Grpc.Codec do
 
   @spec vm({Hyper.Vm.Id.t(), node()}) :: Vm.t()
   defp vm({vm_id, node}), do: %Vm{vm_id: vm_id, node: to_string(node)}
+
+  # Fold an ExecRequest's optional fields into `Hyper.exec/3` opts. Each returns
+  # nil when the field is unset, and `from_grpc/1` drops the nil entries — so an
+  # omitted env/cwd/timeout is absent from opts rather than passed as a blank.
+  @spec exec_env(map() | nil) :: map() | nil
+  defp exec_env(env) when is_map(env) and map_size(env) > 0, do: env
+  defp exec_env(_), do: nil
+
+  @spec blank_to_nil(String.t() | nil) :: String.t() | nil
+  defp blank_to_nil(value) when value in [nil, ""], do: nil
+  defp blank_to_nil(value), do: value
+
+  @spec positive(integer() | nil) :: pos_integer() | nil
+  defp positive(n) when is_integer(n) and n > 0, do: n
+  defp positive(_), do: nil
 
   @spec instance_type(term()) ::
           {:ok, Hyper.Vm.Instance.t()} | {:error, :missing_instance_type | :bad_instance_type}
@@ -141,8 +190,20 @@ defmodule Hyper.Grpc.Codec do
   defp rpc_error(:bad_arch),
     do: GRPC.RPCError.exception(:invalid_argument, "arch holds an unrecognised value")
 
+  defp rpc_error(:missing_vm_id),
+    do: GRPC.RPCError.exception(:invalid_argument, "vm_id is required")
+
+  defp rpc_error(:missing_argv),
+    do: GRPC.RPCError.exception(:invalid_argument, "argv is required")
+
   defp rpc_error(:not_found),
     do: GRPC.RPCError.exception(:not_found, "no such VM")
+
+  defp rpc_error(:agent_unavailable),
+    do: GRPC.RPCError.exception(:unavailable, "the VM's guest agent is not reachable")
+
+  defp rpc_error(:timeout),
+    do: GRPC.RPCError.exception(:deadline_exceeded, "the command did not complete in time")
 
   defp rpc_error(:machine_unreachable),
     do: GRPC.RPCError.exception(:unavailable, "VM's host node is unreachable")

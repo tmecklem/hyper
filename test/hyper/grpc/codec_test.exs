@@ -4,6 +4,10 @@ defmodule Hyper.Grpc.CodecTest do
   alias Hyper.Grpc.Codec
   alias Hyper.Grpc.V1.CreateVmRequest
   alias Hyper.Grpc.V1.CreateVmResponse
+  alias Hyper.Grpc.V1.ExecRequest
+  alias Hyper.Grpc.V1.ExecResponse
+  alias Hyper.Grpc.V1.GetDockerEndpointResponse
+  alias Hyper.Grpc.V1.GetHostAddressResponse
   alias Hyper.Grpc.V1.GetVmResponse
   alias Hyper.Grpc.V1.GetVmUsageResponse
   alias Hyper.Grpc.V1.ListVmsResponse
@@ -165,6 +169,65 @@ defmodule Hyper.Grpc.CodecTest do
     end
   end
 
+  # The addressing RPCs each answer a single VM-scoped lookup with one string.
+  # Their encode boundary just places that string in the field a client reads.
+  describe "to_grpc/1 addressing responses" do
+    test "a host_address result carries the host-facing address" do
+      assert %GetHostAddressResponse{address: "10.100.0.1"} =
+               Codec.to_grpc({:host_address, "10.100.0.1"})
+    end
+
+    test "a docker_endpoint result carries the endpoint verbatim" do
+      assert %GetDockerEndpointResponse{endpoint: "/run/hyper/docker-vabc.sock"} =
+               Codec.to_grpc({:docker_endpoint, "/run/hyper/docker-vabc.sock"})
+    end
+
+    test "an exec result carries stdout, stderr, and the exit code" do
+      assert %ExecResponse{stdout: "out", stderr: "err", exit_code: 3} =
+               Codec.to_grpc({:exec, %{stdout: "out", stderr: "err", exit_code: 3}})
+    end
+  end
+
+  # Exec is the one new RPC with real decode logic: argv plus an env map and
+  # optional cwd/timeout fold into the keyword opts `Hyper.exec/3` expects.
+  describe "from_grpc/1 ExecRequest" do
+    test "a well-formed request decodes to {vm_id, argv, opts} with every opt mapped" do
+      assert {:ok, {"vabc", ["/bin/echo", "hi"], opts}} =
+               Codec.from_grpc(%ExecRequest{
+                 vm_id: "vabc",
+                 argv: ["/bin/echo", "hi"],
+                 env: %{"FOO" => "bar"},
+                 cwd: "/workspace",
+                 timeout_ms: 5_000
+               })
+
+      assert Enum.sort(opts) == [cwd: "/workspace", env: %{"FOO" => "bar"}, timeout: 5_000]
+    end
+
+    test "empty env, cwd, and timeout are omitted from opts, not passed as blanks" do
+      assert {:ok, {"vabc", ["/bin/true"], []}} =
+               Codec.from_grpc(%ExecRequest{
+                 vm_id: "vabc",
+                 argv: ["/bin/true"],
+                 env: %{},
+                 cwd: nil,
+                 timeout_ms: nil
+               })
+    end
+
+    test "a missing vm_id (nil or empty) is refused" do
+      assert {:error, :missing_vm_id} =
+               Codec.from_grpc(%ExecRequest{vm_id: nil, argv: ["/bin/true"]})
+
+      assert {:error, :missing_vm_id} =
+               Codec.from_grpc(%ExecRequest{vm_id: "", argv: ["/bin/true"]})
+    end
+
+    test "an empty argv is refused" do
+      assert {:error, :missing_argv} = Codec.from_grpc(%ExecRequest{vm_id: "vabc", argv: []})
+    end
+  end
+
   # `rpc_error/1` -- the status-classification contract. The server promises each
   # domain reason a specific gRPC status; a mutation that swaps two statuses would
   # silently change what clients see. Table-driven: one assertion shape, rows
@@ -174,7 +237,11 @@ defmodule Hyper.Grpc.CodecTest do
       {:missing_img_id, GRPC.Status.invalid_argument()},
       {:missing_image_ref, GRPC.Status.invalid_argument()},
       {:invalid_ref, GRPC.Status.invalid_argument()},
+      {:missing_vm_id, GRPC.Status.invalid_argument()},
+      {:missing_argv, GRPC.Status.invalid_argument()},
       {:machine_unreachable, GRPC.Status.unavailable()},
+      {:agent_unavailable, GRPC.Status.unavailable()},
+      {:timeout, GRPC.Status.deadline_exceeded()},
       {:no_capacity, GRPC.Status.resource_exhausted()},
       {:exhausted, GRPC.Status.resource_exhausted()}
     ]

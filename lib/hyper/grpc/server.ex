@@ -14,8 +14,14 @@ defmodule Hyper.Grpc.Server do
   alias Hyper.Grpc.V1.{
     CreateVmRequest,
     CreateVmResponse,
+    ExecRequest,
+    ExecResponse,
     ForkVmRequest,
     ForkVmResponse,
+    GetDockerEndpointRequest,
+    GetDockerEndpointResponse,
+    GetHostAddressRequest,
+    GetHostAddressResponse,
     GetVmRequest,
     GetVmResponse,
     GetVmUsageRequest,
@@ -104,6 +110,37 @@ defmodule Hyper.Grpc.Server do
            Hyper.Grpc.Pageable.Vm
          ) do
       {:ok, {page, next}} -> Codec.to_grpc({:vms, page, next})
+      {:error, reason} -> raise Codec.to_grpc({:error, reason})
+    end
+  end
+
+  @spec get_host_address(GetHostAddressRequest.t(), GRPC.Server.Stream.t()) ::
+          GetHostAddressResponse.t()
+  @decorate with_span("Hyper.Grpc.Server.get_host_address", include: [:vm_id])
+  def get_host_address(%GetHostAddressRequest{vm_id: vm_id}, _stream) do
+    case Hyper.host_address(vm_id) do
+      {:ok, address} -> Codec.to_grpc({:host_address, address})
+      {:error, reason} -> raise Codec.to_grpc({:error, reason})
+    end
+  end
+
+  @spec get_docker_endpoint(GetDockerEndpointRequest.t(), GRPC.Server.Stream.t()) ::
+          GetDockerEndpointResponse.t()
+  @decorate with_span("Hyper.Grpc.Server.get_docker_endpoint", include: [:vm_id])
+  def get_docker_endpoint(%GetDockerEndpointRequest{vm_id: vm_id}, _stream) do
+    case Hyper.docker_socket(vm_id) do
+      {:ok, endpoint} -> Codec.to_grpc({:docker_endpoint, endpoint})
+      {:error, reason} -> raise Codec.to_grpc({:error, reason})
+    end
+  end
+
+  @spec exec(ExecRequest.t(), GRPC.Server.Stream.t()) :: ExecResponse.t()
+  @decorate with_span("Hyper.Grpc.Server.exec", include: [:vm_id])
+  def exec(%ExecRequest{vm_id: vm_id} = req, _stream) do
+    with {:ok, {_vm_id, argv, opts}} <- Codec.from_grpc(req),
+         {:ok, result} <- Hyper.exec(vm_id, argv, opts) do
+      Codec.to_grpc({:exec, result})
+    else
       {:error, reason} -> raise Codec.to_grpc({:error, reason})
     end
   end

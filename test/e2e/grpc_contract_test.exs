@@ -18,7 +18,18 @@ defmodule Hyper.E2e.GrpcContractTest do
   """
   use ExUnit.Case, async: false
 
-  alias Hyper.Grpc.V1.{ForkVmRequest, ForkVmResponse, StopVmRequest}
+  alias Hyper.Grpc.V1.{
+    ExecRequest,
+    ExecResponse,
+    ForkVmRequest,
+    ForkVmResponse,
+    GetDockerEndpointRequest,
+    GetDockerEndpointResponse,
+    GetHostAddressRequest,
+    GetHostAddressResponse,
+    StopVmRequest
+  }
+
   alias Hyper.Grpc.V1.Hyper.Stub
 
   @moduletag :integration
@@ -68,6 +79,36 @@ defmodule Hyper.E2e.GrpcContractTest do
     assert child_node != ""
 
     on_exit(fn -> Stub.stop_vm(channel, %StopVmRequest{vm_id: child_id}) end)
+  end
+
+  test "the addressing and exec RPCs answer for a running VM", %{channel: channel} do
+    assert {:ok, img_id} = Hyper.Img.OciLoader.load(@image)
+
+    assert {:ok, vm} = Hyper.create_vm(%Hyper.Vm.Spec{img_id: img_id, type: :micro})
+    on_exit(fn -> Hyper.Node.stop_image_vm(vm) end)
+
+    vm_id = Hyper.id(vm)
+    assert vm_id, "Hyper.id/1 returned nil for a freshly-created VM"
+
+    # Gate on guest-agent readiness before driving Exec over the wire: a
+    # just-booted VM's agent races the test, and await_exec/3 retries through
+    # it. Allow a cold-boot budget matching the fork suite's first-exec wait.
+    assert {:ok, _} = Hyper.E2e.await_exec(vm, ["/bin/true"], :timer.minutes(3))
+
+    assert {:ok, %GetHostAddressResponse{address: host_addr}} =
+             Stub.get_host_address(channel, %GetHostAddressRequest{vm_id: vm_id})
+
+    assert host_addr =~ ~r/^\d{1,3}(\.\d{1,3}){3}$/
+
+    assert {:ok, %GetDockerEndpointResponse{endpoint: endpoint}} =
+             Stub.get_docker_endpoint(channel, %GetDockerEndpointRequest{vm_id: vm_id})
+
+    assert endpoint != ""
+
+    assert {:ok, %ExecResponse{stdout: stdout, exit_code: 0}} =
+             Stub.exec(channel, %ExecRequest{vm_id: vm_id, argv: ["/bin/echo", "hi"]})
+
+    assert stdout == "hi\n"
   end
 
   defp ensure_node_deps! do
