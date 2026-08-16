@@ -27,8 +27,6 @@ defmodule Hyper.E2e.GrpcContractTest do
     GetDockerEndpointResponse,
     GetHostAddressRequest,
     GetHostAddressResponse,
-    GetVmAddressRequest,
-    GetVmAddressResponse,
     StopVmRequest
   }
 
@@ -97,16 +95,10 @@ defmodule Hyper.E2e.GrpcContractTest do
     # it. Allow a cold-boot budget matching the fork suite's first-exec wait.
     assert {:ok, _} = Hyper.E2e.await_exec(vm, ["/bin/true"], :timer.minutes(3))
 
-    assert {:ok, %GetVmAddressResponse{address: vm_addr}} =
-             Stub.get_vm_address(channel, %GetVmAddressRequest{vm_id: vm_id})
-
     assert {:ok, %GetHostAddressResponse{address: host_addr}} =
              Stub.get_host_address(channel, %GetHostAddressRequest{vm_id: vm_id})
 
-    # Both are dotted quads, and the host peer is not the guest-facing address.
-    assert vm_addr =~ ~r/^\d{1,3}(\.\d{1,3}){3}$/
     assert host_addr =~ ~r/^\d{1,3}(\.\d{1,3}){3}$/
-    refute host_addr == vm_addr
 
     assert {:ok, %GetDockerEndpointResponse{endpoint: endpoint}} =
              Stub.get_docker_endpoint(channel, %GetDockerEndpointRequest{vm_id: vm_id})

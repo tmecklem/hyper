@@ -69,17 +69,9 @@ service Hyper {
   // List every microVM currently known to the cluster, across all nodes.
   rpc ListVms(ListVmsRequest) returns (ListVmsResponse);
 
-  // Report a running VM's host-routable veth-namespace IP -- the address on the
-  // host's network-namespace side that DNATs into the guest. This is what a
-  // control plane dials to reach the guest.
-  //
-  // Errors:
-  //   NOT_FOUND -- no VM with this `vm_id` is running in the cluster.
-  rpc GetVmAddress(GetVmAddressRequest) returns (GetVmAddressResponse);
-
-  // Report the host's own address on the VM's veth -- the peer of the address
-  // `GetVmAddress` returns, and what a guest-local service dials to reach the
-  // host. Only ports named in the node's `host_ports` are reachable there.
+  // Report the host's own address on the VM's veth -- what a guest-local
+  // service dials to reach the host. Only ports named in the node's
+  // `host_ports` are reachable there.
   //
   // Errors:
   //   NOT_FOUND -- no VM with this `vm_id` is running in the cluster.
@@ -275,18 +267,6 @@ message LoadImageRequest {
 message LoadImageResponse {
   // The content-addressed image id; pass it to CreateVm.
   string img_id = 1;
-}
-
-// Request a VM's host-routable veth-namespace IP.
-message GetVmAddressRequest {
-  // The id of the VM to address.
-  string vm_id = 1;
-}
-
-// Result of a successful GetVmAddress.
-message GetVmAddressResponse {
-  // The dotted-quad IP that DNATs into the guest.
-  string address = 1;
 }
 
 // Request the host's own address on a VM's veth.

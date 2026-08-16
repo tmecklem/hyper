@@ -8,7 +8,6 @@ defmodule Hyper.Grpc.CodecTest do
   alias Hyper.Grpc.V1.ExecResponse
   alias Hyper.Grpc.V1.GetDockerEndpointResponse
   alias Hyper.Grpc.V1.GetHostAddressResponse
-  alias Hyper.Grpc.V1.GetVmAddressResponse
   alias Hyper.Grpc.V1.GetVmResponse
   alias Hyper.Grpc.V1.GetVmUsageResponse
   alias Hyper.Grpc.V1.ListVmsResponse
@@ -173,11 +172,6 @@ defmodule Hyper.Grpc.CodecTest do
   # The addressing RPCs each answer a single VM-scoped lookup with one string.
   # Their encode boundary just places that string in the field a client reads.
   describe "to_grpc/1 addressing responses" do
-    test "a vm_address result carries the guest-facing address" do
-      assert %GetVmAddressResponse{address: "10.100.0.2"} =
-               Codec.to_grpc({:vm_address, "10.100.0.2"})
-    end
-
     test "a host_address result carries the host-facing address" do
       assert %GetHostAddressResponse{address: "10.100.0.1"} =
                Codec.to_grpc({:host_address, "10.100.0.1"})

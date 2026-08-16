@@ -58,13 +58,6 @@ test("LoadImage with an empty image_ref is INVALID_ARGUMENT", async () => {
   await expectStatus(call(client, client.loadImage, { imageRef: "" }), status.INVALID_ARGUMENT);
 });
 
-test("GetVmAddress on an unknown vm_id is NOT_FOUND", async () => {
-  await expectStatus(
-    call(client, client.getVmAddress, { vmId: GHOST_VM }),
-    status.NOT_FOUND,
-  );
-});
-
 test("GetHostAddress on an unknown vm_id is NOT_FOUND", async () => {
   await expectStatus(
     call(client, client.getHostAddress, { vmId: GHOST_VM }),

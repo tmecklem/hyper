@@ -22,8 +22,6 @@ defmodule Hyper.Grpc.Server do
     GetDockerEndpointResponse,
     GetHostAddressRequest,
     GetHostAddressResponse,
-    GetVmAddressRequest,
-    GetVmAddressResponse,
     GetVmRequest,
     GetVmResponse,
     GetVmUsageRequest,
@@ -112,16 +110,6 @@ defmodule Hyper.Grpc.Server do
            Hyper.Grpc.Pageable.Vm
          ) do
       {:ok, {page, next}} -> Codec.to_grpc({:vms, page, next})
-      {:error, reason} -> raise Codec.to_grpc({:error, reason})
-    end
-  end
-
-  @spec get_vm_address(GetVmAddressRequest.t(), GRPC.Server.Stream.t()) ::
-          GetVmAddressResponse.t()
-  @decorate with_span("Hyper.Grpc.Server.get_vm_address", include: [:vm_id])
-  def get_vm_address(%GetVmAddressRequest{vm_id: vm_id}, _stream) do
-    case Hyper.vm_address(vm_id) do
-      {:ok, address} -> Codec.to_grpc({:vm_address, address})
       {:error, reason} -> raise Codec.to_grpc({:error, reason})
     end
   end
