@@ -27,6 +27,8 @@ defmodule Hyper.E2e.GrpcContractTest do
     ForkVmResponse,
     GetHostAddressRequest,
     GetHostAddressResponse,
+    GetVmRequest,
+    GetVmResponse,
     StopVmRequest
   }
 
@@ -127,6 +129,11 @@ defmodule Hyper.E2e.GrpcContractTest do
 
     assert endpoint =~ ~r{^tcp://127\.0\.0\.1:\d+$}
     assert byte_size(token) >= 32
+
+    # GetVm re-resolves the same coordinates from just the vm_id — a client that
+    # lost the create response is not locked out for the VM's lifetime.
+    assert {:ok, %GetVmResponse{docker_endpoint: ^endpoint, docker_token: ^token}} =
+             Stub.get_vm(channel, %GetVmRequest{vm_id: vm_id})
 
     "tcp://127.0.0.1:" <> port = endpoint
     {:ok, c} = :gen_tcp.connect({127, 0, 0, 1}, String.to_integer(port), [:binary, active: false])

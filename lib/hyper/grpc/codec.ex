@@ -114,9 +114,14 @@ defmodule Hyper.Grpc.Codec do
       docker_token: docker.token
     }
 
-  @spec to_grpc({:located, Hyper.Vm.Id.t(), node()}) :: GetVmResponse.t()
-  def to_grpc({:located, vm_id, node}),
-    do: %GetVmResponse{vm_id: vm_id, node: to_string(node)}
+  @spec to_grpc({:located, Hyper.Vm.Id.t(), node(), docker()}) :: GetVmResponse.t()
+  def to_grpc({:located, vm_id, node, docker}),
+    do: %GetVmResponse{
+      vm_id: vm_id,
+      node: to_string(node),
+      docker_endpoint: docker.endpoint,
+      docker_token: docker.token
+    }
 
   @spec to_grpc({:usage, Hyper.Vm.Id.t(), Unit.Time.t()}) :: GetVmUsageResponse.t()
   def to_grpc({:usage, vm_id, cpu_time}),

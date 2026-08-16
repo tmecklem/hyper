@@ -85,7 +85,7 @@ defmodule Hyper.Grpc.Server do
   def get_vm(%GetVmRequest{vm_id: vm_id}, _stream) do
     case Hyper.whereis(vm_id) do
       nil -> raise Codec.to_grpc({:error, :not_found})
-      node -> Codec.to_grpc({:located, vm_id, node})
+      node -> Codec.to_grpc({:located, vm_id, node, docker_coords(vm_id)})
     end
   end
 

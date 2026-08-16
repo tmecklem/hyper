@@ -213,6 +213,12 @@ message GetVmResponse {
 
   // The cluster node (Erlang node name) the VM currently runs on.
   string node = 2;
+
+  // The VM's Docker endpoint (`tcp://host:port`) and bearer token, same shape as
+  // on CreateVmResponse. Lets a client that holds only a vm_id re-resolve the
+  // coordinates it needs to drive the daemon; empty when no proxy is configured.
+  string docker_endpoint = 3;
+  string docker_token = 4;
 }
 
 // Request a VM's metered compute.

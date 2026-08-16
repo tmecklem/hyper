@@ -180,9 +180,17 @@ defmodule Hyper.Grpc.CodecTest do
                )
     end
 
-    test "a located result carries the vm_id and node string" do
-      assert %GetVmResponse{vm_id: "vabc", node: "hyper@host"} =
-               Codec.to_grpc({:located, "vabc", :hyper@host})
+    test "a located result carries the vm_id, node, and Docker coordinates" do
+      assert %GetVmResponse{
+               vm_id: "vabc",
+               node: "hyper@host",
+               docker_endpoint: "tcp://100.64.0.2:12375",
+               docker_token: "tok"
+             } =
+               Codec.to_grpc(
+                 {:located, "vabc", :hyper@host,
+                  %{endpoint: "tcp://100.64.0.2:12375", token: "tok"}}
+               )
     end
 
     test "a loaded result carries the image id" do
