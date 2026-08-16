@@ -304,14 +304,14 @@ defmodule Hyper.Node do
     end
   end
 
-  # State.describe/1 exits when the VM is not running here; translate only that
-  # into :not_found, leaving config and programming errors to surface loudly
-  # rather than masquerading as a missing VM.
+  # State.describe/1 exits `:noproc` when the VM is not registered here — the one
+  # exit that means "not running". Translate only that into :not_found; a call
+  # timeout or a genuine crash propagates rather than masquerading as a missing VM.
   @spec running_opts(Hyper.Vm.Id.t()) :: {:ok, FireVMM.Opts.t()} | :error
   defp running_opts(vm_id) do
     {:ok, FireVMM.State.describe(vm_id)}
   catch
-    :exit, _ -> :error
+    :exit, {:noproc, _} -> :error
   end
 
   @doc "Start a microVM on this node."
