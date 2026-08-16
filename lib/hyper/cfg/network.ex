@@ -62,15 +62,36 @@ defmodule Hyper.Cfg.Network do
   can reach each VM's Docker daemon; the tailnet + its ACLs are the outer trust
   boundary, the per-VM bearer token the inner one. `nil` (the default) leaves the
   proxies off — the daemon is then reachable only via the host-local Unix socket.
+
+  Returns the parsed `:inet.ip_address()`. A configured value that is not a valid
+  IP raises `ArgumentError` at read time — a clear, fail-fast error rather than an
+  opaque `MatchError` on every VM launch.
   """
-  @spec docker_proxy_bind() :: String.t() | nil
-  def docker_proxy_bind,
-    do:
-      get_cfg(
-        toml: "network.docker_proxy_bind",
-        runtime: {__MODULE__, :docker_proxy_bind},
-        default: nil
-      )
+  @spec docker_proxy_bind() :: :inet.ip_address() | nil
+  def docker_proxy_bind do
+    case get_cfg(
+           toml: "network.docker_proxy_bind",
+           runtime: {__MODULE__, :docker_proxy_bind},
+           default: nil
+         ) do
+      nil ->
+        nil
+
+      value when is_binary(value) ->
+        case :inet.parse_address(String.to_charlist(value)) do
+          {:ok, ip} ->
+            ip
+
+          {:error, _} ->
+            raise ArgumentError,
+                  "network.docker_proxy_bind must be an IP address, got: #{inspect(value)}"
+        end
+
+      other ->
+        raise ArgumentError,
+              "network.docker_proxy_bind must be an IP address string, got: #{inspect(other)}"
+    end
+  end
 
   @doc """
   Base TCP port the per-VM Docker proxies are numbered from, as
