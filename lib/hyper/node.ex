@@ -293,14 +293,27 @@ defmodule Hyper.Node do
         {:error, :not_configured}
 
       bind ->
-        opts = FireVMM.State.describe(vm_id)
-        {floor, _ceiling} = Hyper.Cfg.Jails.uid_gid_range()
-        base = Hyper.Cfg.Network.docker_proxy_base_port()
-        port = FireVMM.Agent.DockerProxy.port_for(opts.uid, floor, base)
-        {:ok, %{endpoint: "tcp://#{bind}:#{port}", token: opts.docker_token}}
+        case running_opts(vm_id) do
+          {:ok, opts} ->
+            {floor, _ceiling} = Hyper.Cfg.Jails.uid_gid_range()
+            base = Hyper.Cfg.Network.docker_proxy_base_port()
+            port = FireVMM.Agent.DockerProxy.port_for(opts.uid, floor, base)
+            {:ok, %{endpoint: "tcp://#{bind}:#{port}", token: opts.docker_token}}
+
+          :error ->
+            {:error, :not_found}
+        end
     end
-  rescue
-    _ -> {:error, :not_found}
+  end
+
+  # State.describe/1 exits when the VM is not running here; translate only that
+  # into :not_found, leaving config and programming errors to surface loudly
+  # rather than masquerading as a missing VM.
+  @spec running_opts(Hyper.Vm.Id.t()) :: {:ok, FireVMM.Opts.t()} | :error
+  defp running_opts(vm_id) do
+    {:ok, FireVMM.State.describe(vm_id)}
+  catch
+    :exit, _ -> :error
   end
 
   @doc "Start a microVM on this node."
