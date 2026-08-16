@@ -17,4 +17,21 @@ defmodule Hyper.Node.BuildOptsTest do
     assert byte_size(one.docker_token) >= 32
     assert one.docker_token != two.docker_token
   end
+
+  test "the docker token is redacted from Opts' span attributes" do
+    opts =
+      Node.build_opts(
+        "vm-one",
+        %Spec{img_id: "img", type: :micro, arch: :x86_64},
+        1,
+        self(),
+        "/vmlinux"
+      )
+
+    attrs = O11y.SpanAttributes.get(opts)
+
+    refute "docker_token" in Enum.map(attrs, fn {k, _v} -> k end)
+    refute Enum.any?(attrs, fn {_k, v} -> v == opts.docker_token end)
+    assert {"vm_id", "vm-one"} in attrs
+  end
 end

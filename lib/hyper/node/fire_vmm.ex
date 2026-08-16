@@ -43,6 +43,9 @@ defmodule Hyper.Node.FireVMM do
     VM can only be booted from a mutable layer - never a bare `Hyper.Img`.
     """
 
+    # docker_token is a live per-VM credential — keep it out of span attributes
+    # (start_vm/1 traces the whole Opts) and any other O11y serialization.
+    @derive {O11y.SpanAttributes, except: [:docker_token]}
     defstruct [
       :vm_id,
       :uid,
@@ -154,14 +157,12 @@ defmodule Hyper.Node.FireVMM do
 
       bind ->
         {:ok, ip} = :inet.parse_address(String.to_charlist(bind))
-        {floor, _ceiling} = Hyper.Cfg.Jails.uid_gid_range()
-        base = Hyper.Cfg.Network.docker_proxy_base_port()
 
         [
           {Agent.DockerProxy,
            %{
              listen_ip: ip,
-             listen_port: Agent.DockerProxy.port_for(opts.uid, floor, base),
+             listen_port: Agent.DockerProxy.port_for(opts.uid),
              token: opts.docker_token,
              dial: fn ->
                Agent.RelayDialer.dial(

@@ -54,6 +54,17 @@ defmodule Hyper.Node.FireVMM.Agent.DockerProxy do
   def mint_token, do: :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
 
   @doc """
+  Resolve a VM's proxy port from its `uid` and the node's config — the single
+  source both the supervisor (which binds the port) and `Hyper.docker_endpoint/1`
+  (which advertises it) call, so the bound and advertised ports cannot drift.
+  """
+  @spec port_for(non_neg_integer()) :: non_neg_integer()
+  def port_for(uid) do
+    {floor, _ceiling} = Hyper.Cfg.Jails.uid_gid_range()
+    port_for(uid, floor, Hyper.Cfg.Network.docker_proxy_base_port())
+  end
+
+  @doc """
   The deterministic listen port for a VM: `base` plus the VM's slot above the
   uid `floor`. Deterministic so a caller can compute a VM's Docker endpoint from
   its uid alone (via `State.describe/1`), never needing to find the proxy process.

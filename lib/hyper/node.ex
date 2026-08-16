@@ -295,9 +295,7 @@ defmodule Hyper.Node do
       bind ->
         case running_opts(vm_id) do
           {:ok, opts} ->
-            {floor, _ceiling} = Hyper.Cfg.Jails.uid_gid_range()
-            base = Hyper.Cfg.Network.docker_proxy_base_port()
-            port = FireVMM.Agent.DockerProxy.port_for(opts.uid, floor, base)
+            port = FireVMM.Agent.DockerProxy.port_for(opts.uid)
             {:ok, %{endpoint: "tcp://#{bind}:#{port}", token: opts.docker_token}}
 
           :error ->
