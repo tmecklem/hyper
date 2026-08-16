@@ -93,6 +93,20 @@ service Hyper {
   //   NOT_FOUND -- no VM with this `vm_id` is running in the cluster.
   rpc GetDockerEndpoint(GetDockerEndpointRequest) returns (GetDockerEndpointResponse);
 
+  // Run a command inside a VM and return its captured output.
+  //
+  // `argv` is executed directly (no shell) as PID 1 in the guest, so `argv[0]`
+  // must be an absolute path. A non-empty `env` REPLACES the guest environment
+  // entirely (so a bare command name would have no PATH to resolve against); an
+  // empty `env` leaves the guest default in place.
+  //
+  // Errors:
+  //   INVALID_ARGUMENT  -- `vm_id` or `argv` is empty.
+  //   NOT_FOUND         -- no VM with this `vm_id` is running in the cluster.
+  //   UNAVAILABLE       -- the VM's host node or its guest agent is unreachable.
+  //   DEADLINE_EXCEEDED -- the command did not finish within `timeout_ms`.
+  rpc Exec(ExecRequest) returns (ExecResponse);
+
   // Load an OCI image into the cluster's shared media store and image database.
   //
   // Pulls the referenced image for this node's architecture, flattens it, builds
@@ -298,4 +312,36 @@ message GetDockerEndpointResponse {
   // The endpoint that speaks to the VM's Docker daemon. A Unix socket path
   // today; a `tcp://host:port` URL once the daemon is exposed on the network.
   string endpoint = 1;
+}
+
+// Request to run a command inside a VM.
+message ExecRequest {
+  // Required. The id of the VM to run in.
+  string vm_id = 1;
+
+  // Required. The command and its arguments; `argv[0]` must be an absolute path.
+  repeated string argv = 2;
+
+  // Optional. Environment for the command. If non-empty it REPLACES the guest
+  // environment entirely; if empty the guest default is left in place.
+  map<string, string> env = 3;
+
+  // Optional. Working directory to run the command in.
+  optional string cwd = 4;
+
+  // Optional. Deadline in milliseconds for the command to complete. 0 or unset
+  // selects the server default (30000).
+  optional uint32 timeout_ms = 5;
+}
+
+// Result of a completed Exec.
+message ExecResponse {
+  // The command's standard output, as verbatim bytes.
+  bytes stdout = 1;
+
+  // The command's standard error, as verbatim bytes.
+  bytes stderr = 2;
+
+  // The command's exit code.
+  int32 exit_code = 3;
 }

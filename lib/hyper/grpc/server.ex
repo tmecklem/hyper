@@ -14,6 +14,8 @@ defmodule Hyper.Grpc.Server do
   alias Hyper.Grpc.V1.{
     CreateVmRequest,
     CreateVmResponse,
+    ExecRequest,
+    ExecResponse,
     ForkVmRequest,
     ForkVmResponse,
     GetDockerEndpointRequest,
@@ -140,6 +142,17 @@ defmodule Hyper.Grpc.Server do
   def get_docker_endpoint(%GetDockerEndpointRequest{vm_id: vm_id}, _stream) do
     case Hyper.docker_socket(vm_id) do
       {:ok, endpoint} -> Codec.to_grpc({:docker_endpoint, endpoint})
+      {:error, reason} -> raise Codec.to_grpc({:error, reason})
+    end
+  end
+
+  @spec exec(ExecRequest.t(), GRPC.Server.Stream.t()) :: ExecResponse.t()
+  @decorate with_span("Hyper.Grpc.Server.exec", include: [:vm_id])
+  def exec(%ExecRequest{vm_id: vm_id} = req, _stream) do
+    with {:ok, {_vm_id, argv, opts}} <- Codec.from_grpc(req),
+         {:ok, result} <- Hyper.exec(vm_id, argv, opts) do
+      Codec.to_grpc({:exec, result})
+    else
       {:error, reason} -> raise Codec.to_grpc({:error, reason})
     end
   end
