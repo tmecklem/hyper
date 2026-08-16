@@ -276,4 +276,43 @@ defmodule Hyper do
   rescue
     _ -> {:error, :not_found}
   end
+
+  @doc """
+  The network endpoint and bearer token for `vm_id`'s Docker daemon, as served by
+  the per-VM authenticating proxy: `{:ok, %{endpoint: "tcp://host:port", token:
+  binary}}`.
+
+  This is the remotely-reachable counterpart to `docker_socket/1` — a control
+  plane off the VM's host uses it to drive the daemon over the tailnet, presenting
+  the token as `Authorization: Bearer`. The port is derived from the VM's uid slot,
+  so it is stable for the VM's lifetime.
+
+  `{:error, :not_configured}` when the node has no `docker_proxy_bind` (the proxy
+  is off and only the host-local socket exists); `{:error, :not_found}` when the
+  VM is not running anywhere.
+  """
+  @spec docker_endpoint(Hyper.Vm.Id.t()) ::
+          {:ok, %{endpoint: String.t(), token: String.t()}}
+          | {:error, :not_found | :not_configured}
+  def docker_endpoint(vm_id) when is_binary(vm_id) do
+    case whereis(vm_id) do
+      nil ->
+        {:error, :not_found}
+
+      node ->
+        case :erpc.call(node, Hyper.Cfg.Network, :docker_proxy_bind, []) do
+          nil ->
+            {:error, :not_configured}
+
+          bind ->
+            opts = :erpc.call(node, Hyper.Node.FireVMM.State, :describe, [vm_id])
+            {floor, _ceiling} = :erpc.call(node, Hyper.Cfg.Jails, :uid_gid_range, [])
+            base = :erpc.call(node, Hyper.Cfg.Network, :docker_proxy_base_port, [])
+            port = Hyper.Node.FireVMM.Agent.DockerProxy.port_for(opts.uid, floor, base)
+            {:ok, %{endpoint: "tcp://#{bind}:#{port}", token: opts.docker_token}}
+        end
+    end
+  rescue
+    _ -> {:error, :not_found}
+  end
 end

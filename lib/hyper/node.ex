@@ -270,7 +270,8 @@ defmodule Hyper.Node do
       img_id: spec.img_id,
       mutable: mutable,
       kernel: kernel,
-      boot_args: spec.boot_args
+      boot_args: spec.boot_args,
+      docker_token: FireVMM.Agent.DockerProxy.mint_token()
     }
   end
 

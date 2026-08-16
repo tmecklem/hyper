@@ -43,7 +43,18 @@ defmodule Hyper.Node.FireVMM do
     VM can only be booted from a mutable layer - never a bare `Hyper.Img`.
     """
 
-    defstruct [:vm_id, :uid, :gid, :type, :arch, :img_id, :mutable, :kernel, :boot_args]
+    defstruct [
+      :vm_id,
+      :uid,
+      :gid,
+      :type,
+      :arch,
+      :img_id,
+      :mutable,
+      :kernel,
+      :boot_args,
+      :docker_token
+    ]
 
     @type t :: %__MODULE__{
             vm_id: Hyper.Vm.Id.t(),
@@ -54,7 +65,8 @@ defmodule Hyper.Node.FireVMM do
             img_id: Hyper.Img.id(),
             mutable: pid(),
             kernel: Path.t(),
-            boot_args: String.t() | nil
+            boot_args: String.t() | nil,
+            docker_token: String.t()
           }
   end
 
@@ -83,34 +95,36 @@ defmodule Hyper.Node.FireVMM do
     # incarnation - decline the start and let the supervisor retry clean.
     case Hyper.Cluster.Routing.register_self({opts.vm_id, :supervisor}) do
       :ok ->
-        children = [
-          # Client must be registered before Core: Core starts the State machine,
-          # which calls Client.run while waiting for the daemon's API. Client
-          # depends only on vm_id (an independent peer), so no reverse dependency.
-          {Client, %Client.Opts{vm_id: opts.vm_id}},
-          {Core, opts},
-          {Relay,
-           %{
-             vm_id: opts.vm_id,
-             vsock_uds: Jailer.host_vsock(opts.vm_id),
-             listen_path: Agent.relay_socket_path(opts.vm_id)
-           }},
-          # Second relay over the same vsock device, carrying the guest's
-          # Docker socket. Keeps the daemon off the network: reaching it over
-          # IP would mean publishing an unauthenticated, root-equivalent API on
-          # the guest's address and opening the host firewall to match.
-          {Relay,
-           %{
-             vm_id: opts.vm_id,
-             vsock_uds: Jailer.host_vsock(opts.vm_id),
-             listen_path: Relay.docker_socket_path(opts.vm_id),
-             vsock_port: Relay.docker_vsock_port()
-           }},
-          # Last on purpose: children stop in reverse start order, so the meter
-          # stops first at teardown and flushes its final usage window while
-          # Core's Daemon (and the cgroup it removes) is still alive.
-          {Meter, %Meter.Opts{vm_id: opts.vm_id, cgroup_dir: Jailer.cgroup_dir(opts.vm_id)}}
-        ]
+        children =
+          [
+            # Client must be registered before Core: Core starts the State machine,
+            # which calls Client.run while waiting for the daemon's API. Client
+            # depends only on vm_id (an independent peer), so no reverse dependency.
+            {Client, %Client.Opts{vm_id: opts.vm_id}},
+            {Core, opts},
+            {Relay,
+             %{
+               vm_id: opts.vm_id,
+               vsock_uds: Jailer.host_vsock(opts.vm_id),
+               listen_path: Agent.relay_socket_path(opts.vm_id)
+             }},
+            # Second relay over the same vsock device, carrying the guest's Docker
+            # socket to a host-local Unix socket for a co-located control plane.
+            {Relay,
+             %{
+               vm_id: opts.vm_id,
+               vsock_uds: Jailer.host_vsock(opts.vm_id),
+               listen_path: Relay.docker_socket_path(opts.vm_id),
+               vsock_port: Relay.docker_vsock_port()
+             }}
+          ] ++
+            docker_proxy_children(opts) ++
+            [
+              # Last on purpose: children stop in reverse start order, so the meter
+              # stops first at teardown and flushes its final usage window while
+              # Core's Daemon (and the cgroup it removes) is still alive.
+              {Meter, %Meter.Opts{vm_id: opts.vm_id, cgroup_dir: Jailer.cgroup_dir(opts.vm_id)}}
+            ]
 
         Supervisor.init(children, strategy: :one_for_one)
 
@@ -123,5 +137,41 @@ defmodule Hyper.Node.FireVMM do
   @spec test_system() :: :ok | {:error, term()}
   def test_system do
     Jailer.test_system()
+  end
+
+  # How long the Docker proxy waits for the vsock CONNECT handshake per dial.
+  @docker_dial_timeout_ms 5_000
+
+  # The per-VM authenticating Docker proxy, present only when the node is
+  # configured with a tailnet bind address. It listens on TCP (base port + the
+  # VM's uid slot) and forwards token-authenticated connections to the same
+  # guest Docker vsock port the Unix-socket relay above uses.
+  @spec docker_proxy_children(Opts.t()) :: [Supervisor.child_spec() | {module(), term()}]
+  defp docker_proxy_children(opts) do
+    case Hyper.Cfg.Network.docker_proxy_bind() do
+      nil ->
+        []
+
+      bind ->
+        {:ok, ip} = :inet.parse_address(String.to_charlist(bind))
+        {floor, _ceiling} = Hyper.Cfg.Jails.uid_gid_range()
+        base = Hyper.Cfg.Network.docker_proxy_base_port()
+
+        [
+          {Agent.DockerProxy,
+           %{
+             listen_ip: ip,
+             listen_port: Agent.DockerProxy.port_for(opts.uid, floor, base),
+             token: opts.docker_token,
+             dial: fn ->
+               Agent.RelayDialer.dial(
+                 Jailer.host_vsock(opts.vm_id),
+                 Relay.docker_vsock_port(),
+                 @docker_dial_timeout_ms
+               )
+             end
+           }}
+        ]
+    end
   end
 end

@@ -47,6 +47,22 @@ defmodule Hyper.Node.FireVMM.Agent.DockerProxy do
   def port(server), do: GenServer.call(server, :port)
 
   @doc """
+  Mint a fresh per-VM bearer token: 32 bytes of CSPRNG entropy, URL-safe so it
+  drops straight into an `Authorization: Bearer` header.
+  """
+  @spec mint_token() :: String.t()
+  def mint_token, do: :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
+
+  @doc """
+  The deterministic listen port for a VM: `base` plus the VM's slot above the
+  uid `floor`. Deterministic so a caller can compute a VM's Docker endpoint from
+  its uid alone (via `State.describe/1`), never needing to find the proxy process.
+  """
+  @spec port_for(non_neg_integer(), non_neg_integer(), :inet.port_number()) ::
+          :inet.port_number()
+  def port_for(uid, floor, base), do: base + (uid - floor)
+
+  @doc """
   Whether an inbound HTTP request `head` carries `Authorization: Bearer <token>`
   for `token`.
 
