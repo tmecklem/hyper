@@ -11,6 +11,29 @@ defmodule Hyper.Cfg.NetworkTest do
     end
   end
 
+  describe "docker_proxy_bind/0" do
+    setup do
+      on_exit(fn -> Application.delete_env(:hyper, Network) end)
+    end
+
+    test "is nil when unset" do
+      assert Network.docker_proxy_bind() == nil
+    end
+
+    test "parses a configured IP string into an address tuple" do
+      Application.put_env(:hyper, Network, docker_proxy_bind: "100.64.0.2")
+      assert Network.docker_proxy_bind() == {100, 64, 0, 2}
+    end
+
+    test "raises a clear error on a non-IP value, rather than failing every VM launch" do
+      Application.put_env(:hyper, Network, docker_proxy_bind: "not-an-ip")
+
+      assert_raise ArgumentError, ~r/docker_proxy_bind/, fn ->
+        Network.docker_proxy_bind()
+      end
+    end
+  end
+
   describe "configured?/0" do
     test "false when no uplink configured" do
       # Base test config sets no [network] table. This is the predicate the

@@ -155,9 +155,7 @@ defmodule Hyper.Node.FireVMM do
       nil ->
         []
 
-      bind ->
-        {:ok, ip} = :inet.parse_address(String.to_charlist(bind))
-
+      ip ->
         [
           {Agent.DockerProxy,
            %{

@@ -292,11 +292,12 @@ defmodule Hyper.Node do
       nil ->
         {:error, :not_configured}
 
-      bind ->
+      ip ->
         case running_opts(vm_id) do
           {:ok, opts} ->
+            host = :inet.ntoa(ip)
             port = FireVMM.Agent.DockerProxy.port_for(opts.uid)
-            {:ok, %{endpoint: "tcp://#{bind}:#{port}", token: opts.docker_token}}
+            {:ok, %{endpoint: "tcp://#{host}:#{port}", token: opts.docker_token}}
 
           :error ->
             {:error, :not_found}
