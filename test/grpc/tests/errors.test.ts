@@ -57,3 +57,45 @@ test("CreateVm with an unrecognised arch value is INVALID_ARGUMENT", async () =>
 test("LoadImage with an empty image_ref is INVALID_ARGUMENT", async () => {
   await expectStatus(call(client, client.loadImage, { imageRef: "" }), status.INVALID_ARGUMENT);
 });
+
+test("GetVmAddress on an unknown vm_id is NOT_FOUND", async () => {
+  await expectStatus(
+    call(client, client.getVmAddress, { vmId: GHOST_VM }),
+    status.NOT_FOUND,
+  );
+});
+
+test("GetHostAddress on an unknown vm_id is NOT_FOUND", async () => {
+  await expectStatus(
+    call(client, client.getHostAddress, { vmId: GHOST_VM }),
+    status.NOT_FOUND,
+  );
+});
+
+test("GetDockerEndpoint on an unknown vm_id is NOT_FOUND", async () => {
+  await expectStatus(
+    call(client, client.getDockerEndpoint, { vmId: GHOST_VM }),
+    status.NOT_FOUND,
+  );
+});
+
+test("Exec on an unknown vm_id is NOT_FOUND", async () => {
+  await expectStatus(
+    call(client, client.exec, { vmId: GHOST_VM, argv: ["/bin/true"] }),
+    status.NOT_FOUND,
+  );
+});
+
+test("Exec with an empty vm_id is INVALID_ARGUMENT", async () => {
+  await expectStatus(
+    call(client, client.exec, { vmId: "", argv: ["/bin/true"] }),
+    status.INVALID_ARGUMENT,
+  );
+});
+
+test("Exec with an empty argv is INVALID_ARGUMENT", async () => {
+  await expectStatus(
+    call(client, client.exec, { vmId: GHOST_VM, argv: [] }),
+    status.INVALID_ARGUMENT,
+  );
+});
