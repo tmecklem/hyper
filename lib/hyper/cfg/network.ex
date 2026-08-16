@@ -64,7 +64,13 @@ defmodule Hyper.Cfg.Network do
   proxies off — the daemon is then reachable only via the host-local Unix socket.
   """
   @spec docker_proxy_bind() :: String.t() | nil
-  def docker_proxy_bind, do: get_cfg(toml: "network.docker_proxy_bind", default: nil)
+  def docker_proxy_bind,
+    do:
+      get_cfg(
+        toml: "network.docker_proxy_bind",
+        runtime: {__MODULE__, :docker_proxy_bind},
+        default: nil
+      )
 
   @doc """
   Base TCP port the per-VM Docker proxies are numbered from, as

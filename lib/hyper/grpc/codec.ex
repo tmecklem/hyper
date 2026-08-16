@@ -14,7 +14,6 @@ defmodule Hyper.Grpc.Codec do
     ExecRequest,
     ExecResponse,
     ForkVmResponse,
-    GetDockerEndpointResponse,
     GetHostAddressResponse,
     GetVmResponse,
     GetVmUsageResponse,
@@ -93,14 +92,27 @@ defmodule Hyper.Grpc.Codec do
     {:ok, {vm_id, argv, opts}}
   end
 
-  @doc "Convert a domain result to an outbound response message, or an error to `GRPC.RPCError`."
-  @spec to_grpc({:created, Hyper.Vm.Id.t(), node()}) :: CreateVmResponse.t()
-  def to_grpc({:created, vm_id, node}) when is_binary(vm_id),
-    do: %CreateVmResponse{vm_id: vm_id, node: to_string(node)}
+  @typedoc "A VM's Docker coordinates: a `tcp://` endpoint and its bearer token (both `\"\"` when no proxy runs)."
+  @type docker :: %{endpoint: String.t(), token: String.t()}
 
-  @spec to_grpc({:forked, Hyper.Vm.Id.t(), node()}) :: ForkVmResponse.t()
-  def to_grpc({:forked, vm_id, node}) when is_binary(vm_id),
-    do: %ForkVmResponse{vm_id: vm_id, node: to_string(node)}
+  @doc "Convert a domain result to an outbound response message, or an error to `GRPC.RPCError`."
+  @spec to_grpc({:created, Hyper.Vm.Id.t(), node(), docker()}) :: CreateVmResponse.t()
+  def to_grpc({:created, vm_id, node, docker}) when is_binary(vm_id),
+    do: %CreateVmResponse{
+      vm_id: vm_id,
+      node: to_string(node),
+      docker_endpoint: docker.endpoint,
+      docker_token: docker.token
+    }
+
+  @spec to_grpc({:forked, Hyper.Vm.Id.t(), node(), docker()}) :: ForkVmResponse.t()
+  def to_grpc({:forked, vm_id, node, docker}) when is_binary(vm_id),
+    do: %ForkVmResponse{
+      vm_id: vm_id,
+      node: to_string(node),
+      docker_endpoint: docker.endpoint,
+      docker_token: docker.token
+    }
 
   @spec to_grpc({:located, Hyper.Vm.Id.t(), node()}) :: GetVmResponse.t()
   def to_grpc({:located, vm_id, node}),
@@ -121,10 +133,6 @@ defmodule Hyper.Grpc.Codec do
   @spec to_grpc({:host_address, String.t()}) :: GetHostAddressResponse.t()
   def to_grpc({:host_address, address}) when is_binary(address),
     do: %GetHostAddressResponse{address: address}
-
-  @spec to_grpc({:docker_endpoint, String.t()}) :: GetDockerEndpointResponse.t()
-  def to_grpc({:docker_endpoint, endpoint}) when is_binary(endpoint),
-    do: %GetDockerEndpointResponse{endpoint: endpoint}
 
   @spec to_grpc({:exec, %{stdout: binary(), stderr: binary(), exit_code: integer()}}) ::
           ExecResponse.t()

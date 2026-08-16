@@ -18,8 +18,6 @@ defmodule Hyper.Grpc.Server do
     ExecResponse,
     ForkVmRequest,
     ForkVmResponse,
-    GetDockerEndpointRequest,
-    GetDockerEndpointResponse,
     GetHostAddressRequest,
     GetHostAddressResponse,
     GetVmRequest,
@@ -50,7 +48,7 @@ defmodule Hyper.Grpc.Server do
     with {:ok, spec} <- Codec.from_grpc(req),
          {:ok, pid} <- Hyper.create_vm(spec),
          vm_id when is_binary(vm_id) <- Hyper.id(pid) do
-      Codec.to_grpc({:created, vm_id, node(pid)})
+      Codec.to_grpc({:created, vm_id, node(pid), docker_coords(vm_id)})
     else
       # Hyper.id/1 could not resolve the id: the VM was placed but its host
       # became unreachable. Surface that rather than returning an empty vm_id.
@@ -64,7 +62,7 @@ defmodule Hyper.Grpc.Server do
   def fork_vm(%ForkVmRequest{vm_id: vm_id}, _stream) do
     with {:ok, child} <- Hyper.fork_vm(vm_id),
          child_id when is_binary(child_id) <- Hyper.id(child) do
-      Codec.to_grpc({:forked, child_id, node(child)})
+      Codec.to_grpc({:forked, child_id, node(child), docker_coords(child_id)})
     else
       # The child was placed but its host became unreachable before its id
       # could be confirmed — same shape as create_vm/2.
@@ -124,16 +122,6 @@ defmodule Hyper.Grpc.Server do
     end
   end
 
-  @spec get_docker_endpoint(GetDockerEndpointRequest.t(), GRPC.Server.Stream.t()) ::
-          GetDockerEndpointResponse.t()
-  @decorate with_span("Hyper.Grpc.Server.get_docker_endpoint", include: [:vm_id])
-  def get_docker_endpoint(%GetDockerEndpointRequest{vm_id: vm_id}, _stream) do
-    case Hyper.docker_socket(vm_id) do
-      {:ok, endpoint} -> Codec.to_grpc({:docker_endpoint, endpoint})
-      {:error, reason} -> raise Codec.to_grpc({:error, reason})
-    end
-  end
-
   @spec exec(ExecRequest.t(), GRPC.Server.Stream.t()) :: ExecResponse.t()
   @decorate with_span("Hyper.Grpc.Server.exec", include: [:vm_id])
   def exec(%ExecRequest{vm_id: vm_id} = req, _stream) do
@@ -142,6 +130,18 @@ defmodule Hyper.Grpc.Server do
       Codec.to_grpc({:exec, result})
     else
       {:error, reason} -> raise Codec.to_grpc({:error, reason})
+    end
+  end
+
+  # The VM's Docker coordinates for a create/fork response. A node without a
+  # Docker proxy configured (or a just-created VM not yet resolvable) yields
+  # empty strings rather than failing the create — the caller falls back to the
+  # host-local socket.
+  @spec docker_coords(Hyper.Vm.Id.t()) :: Codec.docker()
+  defp docker_coords(vm_id) do
+    case Hyper.docker_endpoint(vm_id) do
+      {:ok, coords} -> coords
+      {:error, _} -> %{endpoint: "", token: ""}
     end
   end
 end
