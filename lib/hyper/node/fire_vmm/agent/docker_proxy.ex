@@ -58,8 +58,10 @@ defmodule Hyper.Node.FireVMM.Agent.DockerProxy do
   uid `floor`. Deterministic so a caller can compute a VM's Docker endpoint from
   its uid alone (via `State.describe/1`), never needing to find the proxy process.
   """
-  @spec port_for(non_neg_integer(), non_neg_integer(), :inet.port_number()) ::
-          :inet.port_number()
+  # Dialyzer widens integer `+`/`-` to number() (folding in float()) even though
+  # every operand here is an integer, so it flags the (correct) integer spec.
+  @dialyzer {:nowarn_function, port_for: 3}
+  @spec port_for(non_neg_integer(), non_neg_integer(), non_neg_integer()) :: non_neg_integer()
   def port_for(uid, floor, base), do: base + (uid - floor)
 
   @doc """
